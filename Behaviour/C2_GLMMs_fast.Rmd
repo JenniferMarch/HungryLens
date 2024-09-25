@@ -1,0 +1,300 @@
+---
+title: "Final GLMMs"
+author: "Jennifer March (jennifer.march@uni-hamburg.de)"
+date: "2024-09-02"
+output: html_document
+---
+
+**Information**
+This is a time saving script, in which I am only executing the previously found best GLMMs for the three contrasts taste-health want-health and high cal low cal.
+Referring to results reported in Tables S1-S10
+
+### 1 Preperations
+#### 1.1 Load Data
+```{r}
+#clear working environment
+rm(list=ls())
+
+#clear all plots
+if(!is.null(dev.list())) dev.off()
+
+load("food_data2.RData")
+```
+
+#### 1.2 Chreate Theme for figures
+```{r}
+library(ggplot2)
+myTheme <- theme(
+  axis.line = element_line(colour = "black"), 
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(),  
+  panel.border = element_blank(),   
+  panel.background = element_blank(),
+  text=element_text(size=16, colour = "black"), 
+  axis.title.x = element_text(size=20, face="bold", colour = "black"), 
+  axis.title.y = element_text( size=20, face="bold", colour = "black"),
+  axis.text = element_text(size=16),
+  strip.text =  element_text( size=16),
+  strip.background = element_rect(fill = "white", colour = "black"),
+  legend.background = element_rect(colour = "black"),
+  legend.key = element_blank(),
+  legend.key.size = unit(3, "lines"))
+```
+
+### 2. Taste - Health 
+#### 2.1 Choice
+```{r}
+library(dplyr)
+library(lme4)
+library(lmerTest)
+#is random effects justified?
+food_model0 <- glm(choice2~1, data=data_combined2, family=binomial)
+food_model1 <- glmer(choice2~(1|subject), data=data_combined2, family=binomial)
+food_model2 <- glmer(choice2~(1+condition|subject), data=data_combined2, family=binomial)
+
+AIC(logLik(food_model0))
+AIC(logLik(food_model1))
+AIC(logLik(food_model2))
+
+```
+
+```{r}
+food_model3 <- glmer(choice2~condition + scale(dwelldiff_taste_rel) + (1+condition|subject), data=data_combined2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+food_model4 <- glmer(choice2~condition + scale(dwelldiff_taste_rel) + scale(rel_dwelldiff_taste) + BMI_cent + age_cent + condition * age_cent + scale(rel_dwelldiff_taste) * BMI_cent + scale(rel_dwelldiff_taste) * age_cent  +    (1+condition|subject), data=data_combined2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+food_model5 <- glmer(choice2~condition + scale(dwelldiff_taste_rel) + scale(rel_dwelldiff_taste) + BMI_cent + age_cent + scale(PA_change) + scale(NA_change)+ scale(hs_change) + scale(external) + scale(emotional) + scale(restricted) + scale(dwelldiff_taste_rel) * scale(restricted) + (1+condition|subject), data=data_combined2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+summary(food_model3)
+summary(food_model4)
+summary(food_model5)
+
+anova(food_model3, food_model4)
+
+```
+
+#### 2.2 RT
+```{r}
+food_RTmodel0 <- glm(RT/1000~1, data=data_combined2,family=Gamma(link="identity"))
+food_RTmodel1 <- glmer(RT/1000~(1|subject), data=data_combined2,family=Gamma(link="identity"))
+food_RTmodel2 <- glmer(RT/1000~(1+condition|subject), data=data_combined2,family=Gamma(link="identity"))
+aic_glm <- AIC(logLik(food_RTmodel0))
+aic_glmer <- AIC(logLik(food_RTmodel1))
+aic_glmer2 <- AIC(logLik(food_RTmodel2))
+aic_glm
+aic_glmer
+aic_glmer2
+
+food_modelRT3 <- glmer(RT/1000~condition + choice2 * scale(dwelldiff_taste_rel) + (1+condition|subject), data=data_combined2, family=Gamma(link="identity"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+food_modelRT4 <- glmer(RT/1000~condition + choice2 + scale(dwelldiff_taste_rel) + scale(rel_dwelldiff_taste) + BMI_cent + age_cent + choice2 * scale(dwelldiff_taste_rel)  + condition * age_cent + scale(rel_dwelldiff_taste) * BMI_cent + scale(rel_dwelldiff_taste) * age_cent  +    (1+condition|subject), data=data_combined2, family=Gamma(link="identity"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+summary(food_modelRT3)
+summary(food_modelRT4)
+
+anova(food_modelRT3, food_modelRT4)
+
+```
+#### 2.3 Mediation using bmlm
+Rel. dwell time chosen as mediator
+```{r}
+# check out https://github.com/mvuorre/bmlm/tree/main for installation 
+# visit https://link.springer.com/article/10.3758/s13428-017-0980-9#Sec11 for paper with tutorial
+
+#load package 
+library(bmlm)
+library(qgraph) # for graph necessary
+
+#data_combined2$rel_dwelldiff_chosen_scaled<-scale(data_combined2$rel_dwelldiff_chosen)
+data_combined2<-isolate(d=data_combined2, by="subject", value="dwelldiff_taste_rel")
+
+# necessary for model
+data_combined2$condition2 <- ifelse(data_combined2$condition == "hungry", 1, 0)
+
+mediation<-mlm(d=data_combined2, id="subject", x="condition2", m="dwelldiff_taste_rel_cw", y="choice2", iter=20000, cores=4, binary_y = TRUE)
+mlm_summary(mediation)
+mlm_summary(mediation,pars="random")
+mlm_path_plot(mediation, xlab = "condition", mlab="attention", ylab="food choice")
+mlm_spaghetti_plot(mod=mediation, d=data_combined2, x="condition2", m="dwelldiff_taste_rel_cw", y="choice2", id="subject", fixed=TRUE, random=FALSE, binary_y=TRUE, n=20)
+
+```
+
+### 3. Want - Health
+#### 3.1 Choice
+```{r}
+#is random effects justified?
+food_modelw0 <- glm(choice_want~1, data=data_combined_want2, family=binomial)
+food_modelw1 <- glmer(choice_want~(1|subject), data=data_combined_want2, family=binomial)
+food_modelw2 <- glmer(choice_want~(1+condition|subject), data=data_combined_want2, family=binomial)
+
+AIC(logLik(food_modelw0))
+AIC(logLik(food_modelw1))
+AIC(logLik(food_modelw2))
+```
+
+```{r}
+food_modelw3 <- glmer(choice_want~condition * scale(dwelldiff_taste_rel) + (1+condition|subject), data=data_combined_want2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+food_modelw4 <- glmer(choice_want~condition + scale(dwelldiff_taste_rel) + scale(rel_dwelldiff_taste) + BMI_cent + age_cent + condition * scale(dwelldiff_taste_rel) + scale(dwelldiff_taste_rel) * BMI_cent + scale(dwelldiff_taste_rel) * age_cent + scale(rel_dwelldiff_taste) * BMI_cent + scale(rel_dwelldiff_taste) * age_cent  +  (1+condition|subject), data=data_combined_want2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+summary(food_modelw3)
+summary(food_modelw4)
+
+anova(food_modelw3, food_modelw4)
+
+```
+
+#### 4.2 Mediation
+```{r}
+data_combined_want2<-isolate(d=data_combined_want2, by="subject", value="dwelldiff_taste_rel")
+
+# necessary for model
+data_combined_want2$condition2 <- ifelse(data_combined_want2$condition == "hungry", 1, 0)
+
+mediation2<-mlm(d=data_combined_want2, id="subject", x="condition2", m="dwelldiff_taste_rel_cw", y="choice_want", iter=10000, cores=4, binary_y = TRUE)
+mlm_summary(mediation2)
+mlm_summary(mediation2,pars="random")
+mlm_path_plot(mediation2, xlab = "condition", mlab="attention", ylab="food choice")
+```
+
+
+
+
+### 4. High Cal - Low Cal
+#### 4.1 Choice
+```{r}
+#is random effects justified?
+food_modelc0 <- glm(choice_kcal~1, data=data_combined_neu2, family=binomial)
+food_modelc1 <- glmer(choice_kcal~(1|subject), data=data_combined_neu2, family=binomial)
+food_modelc2 <- glmer(choice_kcal~(1+condition|subject), data=data_combined_neu2, family=binomial)
+
+AIC(logLik(food_modelc0))
+AIC(logLik(food_modelc1))
+AIC(logLik(food_modelc2))
+```
+
+```{r}
+food_modelc3 <- glmer(choice_kcal~condition + scale(dwelldiff_taste_rel) + (1+condition|subject), data=data_combined_neu2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+food_modelc4 <- glmer(choice_kcal~condition + scale(dwelldiff_taste_rel) + scale(rel_dwelldiff_taste) + BMI_cent + age_cent +   scale(dwelldiff_taste_rel) * scale(rel_dwelldiff_taste) + scale(dwelldiff_taste_rel) * age_cent + scale(rel_dwelldiff_taste) * age_cent  +  (1+condition|subject), data=data_combined_neu2, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)))
+
+summary(food_modelc3)
+summary(food_modelc4)
+
+anova(food_modelc3, food_modelc4)
+```
+
+#### 4.2 Mediation
+```{r}
+data_combined_neu2<-isolate(d=data_combined_neu2, by="subject", value="dwelldiff_taste_rel")
+
+# necessary for model
+data_combined_neu2$condition2 <- ifelse(data_combined_neu2$condition == "hungry", 1, 0)
+
+mediation3<-mlm(d=data_combined_neu2, id="subject", x="condition2", m="dwelldiff_taste_rel_cw", y="choice_kcal", iter=10000, cores=4, binary_y = TRUE)
+mlm_summary(mediation3)
+mlm_summary(mediation3,pars="random")
+mlm_path_plot(mediation3, xlab = "condition", mlab="attention", ylab="food choice")
+```
+### 5 Coefficients Effect of Hunger
+```{r}
+# a) Taste
+# Extract the fixed effects
+fixed_effects <- fixef(food_model3)
+
+# Extract the random effects for each subject
+random_effects <- ranef(food_model3)$subject
+
+# Extract the fixed effect for `condition`
+fixed_condition <- fixed_effects["conditionsated"]
+
+# Extract the random slope for `condition`
+random_condition <- ranef(food_model3)$subject[,"conditionsated"]
+
+# Subject-specific coefficients for `condition`
+subject_specific_condition <- fixed_condition + random_condition
+subject_specific_df <- data.frame(
+  subject = rownames(random_effects),
+  condition_effect = subject_specific_condition
+)
+
+# b) want
+# Extract the fixed effects
+fixed_effectsw <- fixef(food_modelw3)
+
+# Extract the random effects for each subject
+random_effectsw <- ranef(food_modelw3)$subject
+
+# Extract the fixed effect for `condition`
+fixed_conditionw <- fixed_effectsw["conditionsated"]
+
+# Extract the random slope for `condition`
+random_conditionw <- ranef(food_modelw3)$subject[,"conditionsated"]
+
+# Subject-specific coefficients for `condition`
+subject_specific_conditionw <- fixed_conditionw + random_conditionw
+subject_specific_dfw <- data.frame(
+  subject = rownames(random_effectsw),
+  condition_effect = subject_specific_conditionw
+)
+
+# b) kcal
+# Extract the fixed effects
+fixed_effectsc <- fixef(food_modelc3)
+
+# Extract the random effects for each subject
+random_effectsc <- ranef(food_modelc3)$subject
+
+# Extract the fixed effect for `condition`
+fixed_conditionc <- fixed_effectsc["conditionsated"]
+
+# Extract the random slope for `condition`
+random_conditionc <- ranef(food_modelc3)$subject[,"conditionsated"]
+
+# Subject-specific coefficients for `condition`
+subject_specific_conditionc <- fixed_conditionc + random_conditionc
+subject_specific_dfc <- data.frame(
+  subject = rownames(random_effectsc),
+  condition_effect = subject_specific_conditionc
+)
+
+
+subject_specific_df <- subject_specific_df %>% 
+  mutate(colour = "gold", fill = "gold", fixed_effect = fixed_condition)
+subject_specific_dfw <- subject_specific_dfw %>% 
+  mutate(colour = "gold3", fill = "gold3", fixed_effect = fixed_conditionw)
+subject_specific_dfc <- subject_specific_dfc %>% 
+  mutate(colour = "yellow2", fill = "yellow2", fixed_effect = fixed_conditionc)
+
+subject_specific_df$conditiontype <- "taste"
+subject_specific_dfw$conditiontype <- "want"
+subject_specific_dfc$conditiontype <- "calories"
+
+
+# Combine all three data frames into one
+combined_df <- bind_rows(subject_specific_df, subject_specific_dfw, subject_specific_dfc)
+
+# Set the order of the condition types
+combined_df$conditiontype <- factor(combined_df$conditiontype, levels = c("taste", "want", "calories"))
+
+mean_values <- combined_df %>% 
+  group_by(conditiontype) %>% 
+  summarize(mean_coefficient = mean(condition_effect),na.rm = TRUE)
+
+# Create the combined violin plot with mean lines for each condition type
+combined_plot <- ggplot(combined_df, aes(x = conditiontype, y = condition_effect)) +
+  geom_violin(aes(color = colour, fill = fill), trim = FALSE, alpha = 0.3) +
+  geom_jitter(aes(color = colour), width = 0.2, height=0) +
+  geom_hline(yintercept = 0, color = "black", linetype = "solid") +
+  scale_color_identity() + 
+  scale_fill_identity() +
+  myTheme +
+  labs(title = "",
+       x = "Choice Type",
+       y = "Coefficients") +
+  myTheme +
+  stat_summary(fun = mean, geom = "crossbar", color = c("gold","gold3", "yellow2"), show.legend = FALSE)+
+  geom_text(data = mean_values, aes(x = as.numeric(conditiontype), y = 2, label = round(mean_coefficient, digits = 2)), vjust = -1)
+  #geom_path(aes(group = subject, color = "grey", alpha=0.2), alpha = 0.5, size=0.5)
+
+ggsave("coefficients.png", combined_plot, width = 7, height = 5)
+```
+
+

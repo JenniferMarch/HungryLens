@@ -1,0 +1,821 @@
+---
+title: "Eye Tracking"
+author: "Jennifer March (jennifer.march@uni-hamburg.de"
+date: "2024-09-13"
+output: html_document
+---
+
+
+### 1 Preperations
+#### 1.1 Load Data
+```{r}
+#clear working environment
+rm(list=ls())
+
+#clear all plots
+if(!is.null(dev.list())) dev.off()
+
+load("food_data2.RData")
+load("food_modeling_data.Rdata")
+```
+
+#### 1.2 Chreate Theme for figures
+```{r}
+library(ggplot2)
+myTheme <- theme(
+  axis.line = element_line(colour = "black"), 
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(),  
+  panel.border = element_blank(),   
+  panel.background = element_blank(),
+  text=element_text(size=16, colour = "black"), 
+  axis.title.x = element_text(size=20, face="bold", colour = "black"), 
+  axis.title.y = element_text( size=20, face="bold", colour = "black"),
+  axis.text = element_text(size=16),
+  strip.text =  element_text( size=16),
+  strip.background = element_rect(fill = "white", colour = "black"),
+  legend.background = element_rect(colour = "black"),
+  legend.key = element_blank(),
+  legend.key.size = unit(3, "lines"))
+```
+
+### 2 EyeTracking
+#### 2.1 choose left given left dwell time
+commented the more traditional way of showing that looking longer at one option increases likelihood of choice. 
+Uncommented below displaying looking longer at taste increases probability of tasty choice.
+```{r}
+# # create bins
+# data_combined2$dwell_diff <- (data_combined2$nutrileft_time+data_combined2$foodleft_time)-(data_combined2$nutriright_time+data_combined2$foodright_time)
+# 
+# data_combined2<-data_combined2 %>% 
+#   mutate(response2=recode(response, 'left'=1, 'right'=0))
+# 
+# # Define the bin edges
+# bin_edges <- c(-Inf, -700, -500, -300, -100, 100, 300, 500, 700, 900,  Inf)
+# 
+# # Create the bins with labels
+# data_combined2$bin <- cut(data_combined2$dwell_diff, breaks = bin_edges,
+#                                 labels = c("<-700", "-600", "-400", "-200", "0", "200", "400", "600", 
+#                                            "800", ">900"),
+#                                 include.lowest = TRUE, right = FALSE)
+```
+ 
+```{r}
+# # Calculate the mean probability and standard error for each bin
+# summary <- data_combined2 %>%
+#   mutate(bin = cut(dwell_diff, breaks = bin_edges, labels = c("<-700", "-600", "-400", "-200", "0", "200", "400", "600", "800", ">900"), include.lowest = TRUE)) %>%
+#   group_by(bin, condition) %>%
+#   summarise(mean_prob_left = mean(response2),
+#             std_error = sd(response2) / sqrt(n()))
+# 
+# 
+# p <- ggplot(summary, aes(x = bin, y = mean_prob_left, color = condition, group = condition)) +
+#   geom_point(stat = "identity", position = position_identity()) +
+#   geom_line(size = 1.25, position = position_identity()) +  # Adjust size for lines
+#   geom_errorbar(size = 1.25,aes(ymin = mean_prob_left - std_error, ymax = mean_prob_left + std_error), width = 0.2, position = position_identity()) +
+#   geom_hline(yintercept = 0.5, color = "black", linetype = "dashed") +
+#   xlab("Dwell Time Difference") +
+#   ylab("P(Choice Left)") +
+#   # ggtitle("Probability Left Choice Given Dwell Time Difference") +
+#   ylim(0, 1) +
+#   scale_color_manual(values = c("gold", "cornflowerblue")) +
+#   myTheme
+# 
+# #ggsave("left_choice_dwelldiff.png",width = 8, height = 6, plot = p, dpi = 300)
+# p
+# 
+# 
+```
+
+##### 2.2 Choose taste given dwell time (Fig 3a)
+```{r}
+# #recode taste/health 
+data_combined2$dwelldiff_taste <- 0
+for (i in 1:nrow(data_combined2)){
+  if((data_combined2$choice2[i]==1) && (data_combined2$response[i]=='left')) { # taste & left
+    data_combined2$dwelldiff_taste[i] = (data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])-(data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])
+  }else if ((data_combined2$choice2[i]==1) && (data_combined2$response[i]=='right')) { # taste & right
+    data_combined2$dwelldiff_taste[i] = (data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])-(data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])
+  }else if ((data_combined2$choice2[i]==0) && (data_combined2$response[i]=='left')) { # health & left
+    data_combined2$dwelldiff_taste[i] = (data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])-(data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])
+  }else if ((data_combined2$choice2[i]==0) && (data_combined2$response[i]=='right')) { # health & right
+    data_combined2$dwelldiff_taste[i] = (data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])-(data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])
+  }
+} 
+
+# Define the bin edges
+bin_edges <- c(-Inf, -700, -500, -300, -100, 100, 300, 500, 700, Inf)
+
+data_combined2$bin2 <- cut(data_combined2$dwelldiff_taste, breaks = bin_edges,
+                                labels = c("<-700", "-600", "-400", "-200", "0", "200", "400", "600", 
+                                            ">700"),
+                                include.lowest = TRUE, right = FALSE)
+
+```
+
+```{r}
+library(dplyr)
+# Calculate the mean probability and standard error for each bin
+summary_taste <- data_combined2 %>%
+  mutate(bin2 = cut(dwelldiff_taste, breaks = bin_edges, labels = c("<-700", "-600", "-400", "-200", "0", "200", "400", "600", ">700"), include.lowest = TRUE)) %>%
+  group_by(bin2, condition) %>%
+  summarise(mean_prob_taste = mean(choice2),
+            std_error_taste = sd(choice2) / sqrt(n()))
+
+p1 <- ggplot(summary_taste, aes(x = bin2, y = mean_prob_taste, color = condition, group = condition)) +
+  geom_smooth(aes(y = mean_prob_taste, fill = condition), method = "loess", span = 0.75, se = TRUE, linetype = "solid", alpha=0.3) +
+  scale_color_manual(values = c("gold", "cornflowerblue")) +
+  scale_fill_manual(values = c("gold", "cornflowerblue")) +  # Set fill colors for each condition
+  labs(x = "Dwell Time Difference", y = "P(Tasty Choice)") +
+  geom_hline(yintercept = 0.5, color = "black", linetype = "dashed") +
+  geom_vline(xintercept = "0", color = "black", linetype = "dashed") +  
+  ylim(0,1)+
+  myTheme
+ggsave("pchoice_dwelltime.png",  width = 8, height = 6, plot = last_plot(), dpi = 300)
+p1
+```
+
+#### 2.3  More attention to food image under hunger (Figure 3b)
+```{r}
+data_combined2$att_food<-0
+for (n in 1:nrow(data_combined2)) {
+  data_combined2$att_food[n] <- (data_combined2$foodleft_time[n] + data_combined2$foodright_time[n]) /
+                (sum(data_combined2$foodleft_time[n] + data_combined2$foodright_time[n] +
+                    data_combined2$nutrileft_time[n] + data_combined2$nutriright_time[n]))
+}
+
+#delete NA trials
+data_combined23 <- subset(data_combined2,att_food!='NaN')
+
+combined_summary <- data_combined23 %>%
+  group_by(subject, condition) %>%
+  summarise(mean_att_food = mean(att_food),
+            std_error = sd(att_food) / sqrt(n()))
+
+library(ggdist)
+
+# Create a raincloud plot
+raincloud_plot <- ggplot(combined_summary, aes(x = condition, y = mean_att_food, fill = condition)) +
+  geom_violin(trim = FALSE, alpha = 0.8) +
+  #geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA) +
+  geom_point(position = position_jitter(width = 0.15), size = 1) +
+  scale_fill_manual(values = c("gold", "cornflowerblue")) +
+  xlab("Condition") +
+  ylab("P(Dwell Time Food)") +
+  #ggtitle("Mean Dwell Time food Attribute per Condition") +
+  ylim(0.5,1)+
+  #scale_fill_manual(values = c("sated" = "cornflowerblue", "hungry" = "gold")) + 
+  myTheme
+
+
+# Display the raincloud plot
+raincloud_plot
+
+ggsave("dwelltime_food_cond.png", width = 7, height = 7, plot = last_plot(), dpi = 300)
+
+```
+stats to plot 
+```{r}
+att_food_h<-subset(combined_summary, condition =='hungry')
+att_food_s<-subset(combined_summary, condition =='sated')
+
+ttest<-t.test(att_food_h$mean_att_food, att_food_s$mean_att_food, paired=TRUE, alternative="greater")
+ttest
+# .0057**
+
+effect_size3 <- ttest$statistic / sqrt(ttest$parameter)
+
+# Still significant if one outlier is excluded?
+att_food_h2 <- subset(att_food_h, subject != 78)
+att_food_s2 <- subset(att_food_s, subject != 78)
+
+ttest2<-t.test(att_food_h2$mean_att_food, att_food_s2$mean_att_food, paired=TRUE, alternative="greater")
+ttest2
+# YES!--> .0097*
+effect_size4 <- ttest2$statistic / sqrt(ttest2$parameter)
+```
+
+### 3 First and last Fixations by Category
+#### 3.1 Hungry
+```{r}
+# Group the dataframe by 'trial' and arrange it by 'fixElement' within each group
+data_hungry_long<-subset(data_hungry_long, fixElement != 0)
+
+# Group the data by trial and subject
+grouped_data_hungry <- data_hungry_long %>%
+  group_by(trial, subject)
+
+# Extract the first fixated element for each trial
+first_fixated_hungry <- grouped_data_hungry %>%
+  slice(1) %>%
+  select(trial, first_element = fixElement)
+
+# Extract the last fixated element for each trial
+last_fixated_hungry <- grouped_data_hungry %>%
+  slice(n()) %>%
+  select(trial, response, last_element = fixElement)
+
+```
+
+```{r}
+# note odd subject number nutri-score higher
+first_fixated_hungry <- first_fixated_hungry %>%
+  mutate(cat_fix = NA)
+
+for (i in 1:nrow(first_fixated_hungry)) {
+  if (first_fixated_hungry$subject[i] == "even") {
+    if (first_fixated_hungry$first_element[i] == 1) {
+      first_fixated_hungry$cat_fix[i] <- "nutri_left"
+    } else if (first_fixated_hungry$first_element[i] == 2) {
+      first_fixated_hungry$cat_fix[i] <- "nutri_right"
+    } else if (first_fixated_hungry$first_element[i] == 3) {
+      first_fixated_hungry$cat_fix[i] <- "food_left"
+    } else if (first_fixated_hungry$first_element[i] == 4) {
+      first_fixated_hungry$cat_fix[i] <- "food_right"
+    }
+  } else {
+    if (first_fixated_hungry$first_element[i] == 1) {
+      first_fixated_hungry$cat_fix[i] <- "food_left"
+    } else if (first_fixated_hungry$first_element[i] == 2) {
+      first_fixated_hungry$cat_fix[i] <- "food_right"
+    } else if (first_fixated_hungry$first_element[i] == 3) {
+      first_fixated_hungry$cat_fix[i] <- "nutri_left"
+    } else if (first_fixated_hungry$first_element[i] == 4) {
+      first_fixated_hungry$cat_fix[i] <- "nutri_right"
+    }
+  }
+}
+
+# note odd subject number nutri-score higher
+last_fixated_hungry <- last_fixated_hungry %>%
+  mutate(cat_fix = NA)
+
+for (i in 1:nrow(last_fixated_hungry)) {
+  if (last_fixated_hungry$subject[i] == "even") {
+    if (last_fixated_hungry$last_element[i] == 1) {
+      last_fixated_hungry$cat_fix[i] <- "nutri_left"
+    } else if (last_fixated_hungry$last_element[i] == 2) {
+      last_fixated_hungry$cat_fix[i] <- "nutri_right"
+    } else if (last_fixated_hungry$last_element[i] == 3) {
+      last_fixated_hungry$cat_fix[i] <- "food_left"
+    } else if (last_fixated_hungry$last_element[i] == 4) {
+      last_fixated_hungry$cat_fix[i] <- "food_right"
+    }
+  } else {
+    if (last_fixated_hungry$last_element[i] == 1) {
+      last_fixated_hungry$cat_fix[i] <- "food_left"
+    } else if (last_fixated_hungry$last_element[i] == 2) {
+      last_fixated_hungry$cat_fix[i] <- "food_right"
+    } else if (last_fixated_hungry$last_element[i] == 3) {
+      last_fixated_hungry$cat_fix[i] <- "nutri_left"
+    } else if (last_fixated_hungry$last_element[i] == 4) {
+      last_fixated_hungry$cat_fix[i] <- "nutri_right"
+    }
+  }
+}
+
+```
+
+```{r}
+# Count the occurrences of each category
+category_counts_first <- table(first_fixated_hungry$cat_fix)
+category_counts_last <- table(last_fixated_hungry$cat_fix)
+
+category_percentages_hungry_first <- prop.table(category_counts_first) * 100
+category_percentages_hungry_last <- prop.table(category_counts_last) * 100
+
+# Print the category counts
+print(category_percentages_hungry_first)
+print(category_percentages_hungry_last)
+```
+
+#### 3.2 Sated
+```{r}
+# Group the dataframe by 'trial' and arrange it by 'fixElement' within each group
+data_sated_long<-subset(data_sated_long, fixElement != 0)
+
+
+# Group the data by trial and subject
+grouped_data_sated <- data_sated_long %>%
+  group_by(trial, subject)
+
+# Extract the first fixated element for each trial
+first_fixated_sated <- grouped_data_sated %>%
+  slice(1) %>%
+  select(trial, first_element = fixElement)
+
+# Extract the last fixated element for each trial
+last_fixated_sated <- grouped_data_sated %>%
+  slice(n()) %>%
+  select(trial, response, last_element = fixElement)
+
+```
+
+
+#### 3.3 Category based Fixation
+```{r}
+# note odd subject number nutri-score higher
+first_fixated_sated <- first_fixated_sated %>%
+  mutate(cat_fix = NA)
+
+for (i in 1:nrow(first_fixated_sated)) {
+  if (first_fixated_sated$subject[i] == "even") {
+    if (first_fixated_sated$first_element[i] == 1) {
+      first_fixated_sated$cat_fix[i] <- "nutri_left"
+    } else if (first_fixated_sated$first_element[i] == 2) {
+      first_fixated_sated$cat_fix[i] <- "nutri_right"
+    } else if (first_fixated_sated$first_element[i] == 3) {
+      first_fixated_sated$cat_fix[i] <- "food_left"
+    } else if (first_fixated_sated$first_element[i] == 4) {
+      first_fixated_sated$cat_fix[i] <- "food_right"
+    }
+  } else {
+    if (first_fixated_sated$first_element[i] == 1) {
+      first_fixated_sated$cat_fix[i] <- "food_left"
+    } else if (first_fixated_sated$first_element[i] == 2) {
+      first_fixated_sated$cat_fix[i] <- "food_right"
+    } else if (first_fixated_sated$first_element[i] == 3) {
+      first_fixated_sated$cat_fix[i] <- "nutri_left"
+    } else if (first_fixated_sated$first_element[i] == 4) {
+      first_fixated_sated$cat_fix[i] <- "nutri_right"
+    }
+  }
+}
+
+# note odd subject number nutri-score higher
+last_fixated_sated <- last_fixated_sated %>%
+  mutate(cat_fix = NA)
+
+for (i in 1:nrow(last_fixated_sated)) {
+  if (last_fixated_sated$subject[i] == "even") {
+    if (last_fixated_sated$last_element[i] == 1) {
+      last_fixated_sated$cat_fix[i] <- "nutri_left"
+    } else if (last_fixated_sated$last_element[i] == 2) {
+      last_fixated_sated$cat_fix[i] <- "nutri_right"
+    } else if (last_fixated_sated$last_element[i] == 3) {
+      last_fixated_sated$cat_fix[i] <- "food_left"
+    } else if (last_fixated_sated$last_element[i] == 4) {
+      last_fixated_sated$cat_fix[i] <- "food_right"
+    }
+  } else {
+    if (last_fixated_sated$last_element[i] == 1) {
+      last_fixated_sated$cat_fix[i] <- "food_left"
+    } else if (last_fixated_sated$last_element[i] == 2) {
+      last_fixated_sated$cat_fix[i] <- "food_right"
+    } else if (last_fixated_sated$last_element[i] == 3) {
+      last_fixated_sated$cat_fix[i] <- "nutri_left"
+    } else if (last_fixated_sated$last_element[i] == 4) {
+      last_fixated_sated$cat_fix[i] <- "nutri_right"
+    }
+  }
+}
+
+```
+
+```{r}
+n=length(unique(data_combined2$subject))
+###-------SATED-------###
+# Count the occurrences of each category
+category_counts_sated_first <- table(first_fixated_sated$cat_fix)
+category_counts_sated_last <- table(last_fixated_sated$cat_fix)
+
+category_percentages_sated_first <- prop.table(category_counts_sated_first) * 100
+category_percentages_sated_last <- prop.table(category_counts_sated_last) * 100
+
+# Create a data frame from the category percentages
+category_percentages_sated_first <- as.data.frame(category_percentages_sated_first)
+category_percentages_sated_first$category <- rownames(category_percentages_sated_first)
+category_percentages_sated_first$prop <- category_percentages_sated_first$Freq/100
+
+# Calculate the standard errors for each category
+category_percentages_sated_first$SE <- sqrt(category_percentages_sated_first$prop * (1 - category_percentages_sated_first$prop) / n)
+category_percentages_sated_first$condition <- "sated"
+
+###-------HUNGRY-------###
+# Count the occurrences of each category
+category_counts_hungry_first <- table(first_fixated_hungry$cat_fix)
+category_counts_hungry_last <- table(last_fixated_hungry$cat_fix)
+
+category_percentages_hungry_first <- prop.table(category_counts_hungry_first) * 100
+category_percentages_hungry_last <- prop.table(category_counts_hungry_last) * 100
+
+# Create a data frame from the category percentages
+category_percentages_hungry_first <- as.data.frame(category_percentages_hungry_first)
+category_percentages_hungry_first$category <- rownames(category_percentages_hungry_first)
+
+category_percentages_hungry_first$prop <- category_percentages_hungry_first$Freq/100
+
+# Calculate the standard errors for each category
+category_percentages_hungry_first$SE <- sqrt(category_percentages_hungry_first$prop * (1 - category_percentages_hungry_first$prop) / n)
+category_percentages_hungry_first$condition <- "hungry"
+
+# Merge the data frames for both conditions
+category_percentages <- rbind(category_percentages_sated_first, category_percentages_hungry_first)
+
+###-------PLOT-------###
+# Create the bar graph using ggplot with error bars
+bar_graph <- ggplot(data = category_percentages, aes(x = category, y = prop, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.6) +
+  geom_errorbar(aes(ymin = prop - SE, ymax = prop + SE),
+                position = position_dodge(width = 0.6),
+                width = 0.2, color = "black", alpha = 0.7) +  # Adjust width and color as desired
+  geom_hline(yintercept = 0.25, color = "black", linetype = "dashed") +
+  xlab("Category") +
+  ylab("Proportion") +
+  ggtitle("Category Proportion First Fixation") +
+  ylim(0, 1) +
+  scale_fill_manual(values = c("sated" = "cornflowerblue", "hungry" = "gold")) + 
+  scale_x_discrete(labels=c("1"="food left", "2"="food right", "3"="nutri left", "4"="nutri right"))+
+  myTheme
+
+# Display the bar graph
+print(bar_graph)
+
+ggsave("prop_firstfix_cond.png", width = 7, height = 7, plot = last_plot(), dpi = 300)
+
+```
+
+
+```{r}
+##SATED
+# Create a data frame from the category percentages
+category_percentages_sated_last <- as.data.frame(category_percentages_sated_last)
+category_percentages_sated_last$category <- rownames(category_percentages_sated_last)
+category_percentages_sated_last$prop <- category_percentages_sated_last$Freq/100
+
+# Calculate the standard errors for each category
+category_percentages_sated_last$SE <- sqrt(category_percentages_sated_last$prop * (1 - category_percentages_sated_last$prop) / n)
+category_percentages_sated_last$condition <- "sated"
+
+##HUNGRY
+# Create a data frame from the category percentages for hungry condition
+category_percentages_hungry_last <- as.data.frame(category_percentages_hungry_last)
+category_percentages_hungry_last$category <- rownames(category_percentages_hungry_last)
+category_percentages_hungry_last$prop <- category_percentages_hungry_last$Freq/100
+
+# Calculate the standard errors for each category
+category_percentages_hungry_last$SE <- sqrt(category_percentages_hungry_last$prop * (1 - category_percentages_hungry_last$prop) / n)
+category_percentages_hungry_last$condition <- "hungry"
+
+# Combine the data frames
+combined_last_fix <- rbind(category_percentages_sated_last, category_percentages_hungry_last)
+
+## PLOT
+bar_graph <- ggplot(data = combined_last_fix, aes(x = category, y = prop, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.6) +
+  geom_errorbar(aes(ymin = prop - SE, ymax = prop + SE),
+                position = position_dodge(width = 0.6),
+                width = 0.2, color = "black", alpha = 0.7) +  # Adjust width and color as desired
+  geom_hline(yintercept = 0.25, color = "black", linetype = "dashed") +
+  xlab("Category") +
+  ylab("Proportion") +
+  ggtitle("Category Proportion Last Fixation") +
+  ylim(0, 1) +
+  scale_fill_manual(values = c("sated" = "cornflowerblue", "hungry" = "gold")) + 
+  scale_x_discrete(labels=c("1"="food left", "2"="food right", "3"="nutri left", "4"="nutri right"))+
+  myTheme
+
+# Display the bar graph
+print(bar_graph)
+
+ggsave("prop_lastfix_cond.png", width = 7, height = 7,plot = last_plot(), dpi = 300)
+
+```
+##### 3.4 Fist fixation by Location
+```{r}
+# note even subject number value-score higher!
+#1= time left, 2= time right, 3= value left, 4 = value right
+
+first_fixated_hungry <- first_fixated_hungry %>%
+  mutate(loc_fix = NA)
+
+ for (i in 1:nrow(first_fixated_hungry)) {
+   if (first_fixated_hungry$subject[i] %% 2 == 0) {
+     if (first_fixated_hungry$first_element[i] == 1) {
+       first_fixated_hungry$loc_fix[i] <- "upper_left"
+     } else if (first_fixated_hungry$first_element[i] == 2) {
+       first_fixated_hungry$loc_fix[i] <- "upper_right"
+     } else if (first_fixated_hungry$first_element[i] == 3) {
+       first_fixated_hungry$loc_fix[i] <- "lower_left"
+     } else if (first_fixated_hungry$first_element[i] == 4) {
+       first_fixated_hungry$loc_fix[i] <- "lower_right"
+     }
+   } else {
+     if (first_fixated_hungry$first_element[i] == 1) {
+       first_fixated_hungry$loc_fix[i] <- "lower_left"
+     } else if (first_fixated_hungry$first_element[i] == 2) {
+       first_fixated_hungry$loc_fix[i] <- "lower_right"
+     } else if (first_fixated_hungry$first_element[i] == 3) {
+       first_fixated_hungry$loc_fix[i] <- "upper_left"
+     } else if (first_fixated_hungry$first_element[i] == 4) {
+       first_fixated_hungry$loc_fix[i] <- "upper_right"
+     }
+   }
+}
+
+
+```
+
+```{r}
+# note even subject number value-score higher!
+#1= time left, 2= time right, 3= value left, 4=value right
+
+first_fixated_sated <- first_fixated_sated %>%
+  mutate(loc_fix = NA)
+
+ for (i in 1:nrow(first_fixated_sated)) {
+   if (first_fixated_hungry$subject[i] %% 2 == 0) {
+     if (first_fixated_sated$first_element[i] == 1) {
+       first_fixated_sated$loc_fix[i] <- "upper_left"
+     } else if (first_fixated_sated$first_element[i] == 2) {
+       first_fixated_sated$loc_fix[i] <- "upper_right"
+     } else if (first_fixated_sated$first_element[i] == 3) {
+       first_fixated_sated$loc_fix[i] <- "lower_left"
+     } else if (first_fixated_sated$first_element[i] == 4) {
+       first_fixated_sated$loc_fix[i] <- "lower_right"
+     }
+   } else {
+     if (first_fixated_sated$first_element[i] == 1) {
+       first_fixated_sated$loc_fix[i] <- "lower_left"
+     } else if (first_fixated_sated$first_element[i] == 2) {
+       first_fixated_sated$loc_fix[i] <- "lower_right"
+     } else if (first_fixated_sated$first_element[i] == 3) {
+       first_fixated_sated$loc_fix[i] <- "upper_left"
+     } else if (first_fixated_sated$first_element[i] == 4) {
+       first_fixated_sated$loc_fix[i] <- "upper_right"
+     }
+   }
+}
+
+
+```
+
+
+```{r}
+###-------SATED-------###
+# Count the occurrences of each location
+location_counts_sated_first <- table(first_fixated_sated$loc_fix)
+location_percentages_sated_first <- prop.table(location_counts_sated_first) * 100
+
+# Create a data frame from the location percentages
+location_percentages_sated_first <- as.data.frame(location_percentages_sated_first)
+location_percentages_sated_first$location <- rownames(location_percentages_sated_first)
+location_percentages_sated_first$prop <- location_percentages_sated_first$Freq/100
+
+# Calculate the standard errors for each location
+location_percentages_sated_first$SE <- sqrt(location_percentages_sated_first$prop * (1 - location_percentages_sated_first$prop) / n)
+location_percentages_sated_first$condition <- "sated"
+
+###-------HUNGRY-------###
+# Count the occurrences of each location
+location_counts_hungry_first <- table(first_fixated_hungry$loc_fix)
+location_percentages_hungry_first <- prop.table(location_counts_hungry_first) * 100
+
+
+# Create a data frame from the location percentages
+location_percentages_hungry_first <- as.data.frame(location_percentages_hungry_first)
+location_percentages_hungry_first$location <- rownames(location_percentages_hungry_first)
+
+location_percentages_hungry_first$prop <- location_percentages_hungry_first$Freq/100
+
+# Calculate the standard errors for each location
+location_percentages_hungry_first$SE <- sqrt(location_percentages_hungry_first$prop * (1 - location_percentages_hungry_first$prop) / n)
+location_percentages_hungry_first$condition <- "hungry"
+
+# Merge the data frames for both conditions
+location_percentages <- rbind(location_percentages_sated_first, location_percentages_hungry_first)
+
+###-------PLOT-------###
+# Create the bar graph using ggplot with error bars
+bar_graph <- ggplot(data = location_percentages, aes(x = Var1, y = prop, fill = condition)) +
+  geom_bar(stat = "identity", position = "dodge", width = 0.6) +
+  geom_errorbar(aes(ymin = prop - SE, ymax = prop + SE),
+                position = position_dodge(width = 0.6),
+                width = 0.2, color = "black", alpha = 0.7) +  # Adjust width and color as desired
+  geom_hline(yintercept = 0.25, color = "black", linetype = "dashed") +
+  xlab("Location") +
+  ylab("Proportion") +
+  ggtitle("Location Proportion First Fixation") +
+  ylim(0, 1) +
+  scale_fill_manual(values = c("sated" = "cornflowerblue", "hungry" = "gold")) + 
+  #scale_x_discrete(labels=c("1"="lower left", "2"="lower right", "3"="upper left", "4"="upper right"))+
+  myTheme
+
+ggsave("prop_firstfix_location_cond.png", width = 7, height = 7, plot = last_plot(), dpi = 300)
+
+# Display the bar graph
+print(bar_graph)
+```
+
+```{r}
+## HUNGRY
+# correlation between last fixation and choice?
+last_fixated_hungry$pred <- 0
+last_fixated_hungry$pred[last_fixated_hungry$response == "left" & (last_fixated_hungry$cat_fix == "food_left" | last_fixated_hungry$cat_fix == "nutri_left")] <- 1
+last_fixated_hungry$pred[last_fixated_hungry$response == "right" & (last_fixated_hungry$cat_fix == "food_right" | last_fixated_hungry$cat_fix == "nutri_right")] <- 1
+mean(last_fixated_hungry$pred)
+# 69.88 % of times people chose last fixated item under hunger 
+
+## SATED
+last_fixated_sated$pred <- 0
+last_fixated_sated$pred[last_fixated_sated$response == "left" & (last_fixated_sated$cat_fix == "food_left" | last_fixated_sated$cat_fix == "nutri_left")] <- 1
+last_fixated_sated$pred[last_fixated_sated$response == "right" & (last_fixated_sated$cat_fix == "food_right" | last_fixated_sated$cat_fix == "nutri_right")] <- 1
+mean(last_fixated_sated$pred)
+# 69.81 % of times people chose last fixated item when sated
+```
+
+
+##### 3.5 Fixations over time
+```{r}
+## HUNGRY
+data_hungry_long$transition <- 'NA'
+
+
+for (i in 1:(nrow(data_hungry_long) - 1)) {
+  if (((data_hungry_long$fixElement[i] == 1 && data_hungry_long$fixElement[i + 1] == 3) ||
+       (data_hungry_long$fixElement[i] == 2 && data_hungry_long$fixElement[i + 1] == 4)) ||
+      ((data_hungry_long$fixElement[i] == 3 && data_hungry_long$fixElement[i + 1] == 1) ||
+       (data_hungry_long$fixElement[i] == 4 && data_hungry_long$fixElement[i + 1] == 2))) {
+    data_hungry_long$transition[i] <- "within alternative"
+  } else if (((data_hungry_long$fixElement[i] == 1 && data_hungry_long$fixElement[i + 1] == 2) ||
+              (data_hungry_long$fixElement[i] == 3 && data_hungry_long$fixElement[i + 1] == 4)) ||
+             ((data_hungry_long$fixElement[i] == 2 && data_hungry_long$fixElement[i + 1] == 1) ||
+              (data_hungry_long$fixElement[i] == 4 && data_hungry_long$fixElement[i + 1] == 3))) {
+    data_hungry_long$transition[i] <- "within attributes"
+  } else if (((data_hungry_long$fixElement[i] == 1 && data_hungry_long$fixElement[i + 1] == 4) ||
+              (data_hungry_long$fixElement[i] == 2 && data_hungry_long$fixElement[i + 1] == 3)) ||
+             ((data_hungry_long$fixElement[i] == 4 && data_hungry_long$fixElement[i + 1] == 1) ||
+              (data_hungry_long$fixElement[i] == 3 && data_hungry_long$fixElement[i + 1] == 2))) {
+    data_hungry_long$transition[i] <- "diagonal"
+  } else if (((data_hungry_long$fixElement[i] == 1 && data_hungry_long$fixElement[i + 1] == 1) ||
+              (data_hungry_long$fixElement[i] == 2 && data_hungry_long$fixElement[i + 1] == 2) ||
+              (data_hungry_long$fixElement[i] == 3 && data_hungry_long$fixElement[i + 1] == 3) ||
+              (data_hungry_long$fixElement[i] == 4 && data_hungry_long$fixElement[i + 1] == 4))) {
+    data_hungry_long$transition[i] <- "remain"
+  }
+}
+
+```
+
+```{r}
+## SATED
+data_sated_long$transition <- 'NA'
+
+for (i in 1:(nrow(data_sated_long) - 1)) {
+  if (((data_sated_long$fixElement[i] == 1 && data_sated_long$fixElement[i + 1] == 3) ||
+       (data_sated_long$fixElement[i] == 2 && data_sated_long$fixElement[i + 1] == 4)) ||
+      ((data_sated_long$fixElement[i] == 3 && data_sated_long$fixElement[i + 1] == 1) ||
+       (data_sated_long$fixElement[i] == 4 && data_sated_long$fixElement[i + 1] == 2))) {
+    data_sated_long$transition[i] <- "within alternative"
+  } else if (((data_sated_long$fixElement[i] == 1 && data_sated_long$fixElement[i + 1] == 2) ||
+              (data_sated_long$fixElement[i] == 3 && data_sated_long$fixElement[i + 1] == 4)) ||
+             ((data_sated_long$fixElement[i] == 2 && data_sated_long$fixElement[i + 1] == 1) ||
+              (data_sated_long$fixElement[i] == 4 && data_sated_long$fixElement[i + 1] == 3))) {
+    data_sated_long$transition[i] <- "within attributes"
+  } else if (((data_sated_long$fixElement[i] == 1 && data_sated_long$fixElement[i + 1] == 4) ||
+              (data_sated_long$fixElement[i] == 2 && data_sated_long$fixElement[i + 1] == 3)) ||
+             ((data_sated_long$fixElement[i] == 4 && data_sated_long$fixElement[i + 1] == 1) ||
+              (data_sated_long$fixElement[i] == 3 && data_sated_long$fixElement[i + 1] == 2))) {
+    data_sated_long$transition[i] <- "diagonal"
+  } else if (((data_sated_long$fixElement[i] == 1 && data_sated_long$fixElement[i + 1] == 1) ||
+              (data_sated_long$fixElement[i] == 2 && data_sated_long$fixElement[i + 1] == 2) ||
+              (data_sated_long$fixElement[i] == 3 && data_sated_long$fixElement[i + 1] == 3) ||
+              (data_sated_long$fixElement[i] == 4 && data_sated_long$fixElement[i + 1] == 4))) {
+    data_sated_long$transition[i] <- "remain"
+  }
+}
+```
+
+```{r}
+## HUNGRY
+# check proportion transitions
+## exclude remain trials
+data_trans <- subset(data_hungry_long, transition!='remain')
+data_trans <- subset(data_trans, transition!='NA')
+data_trans$condition<- 'hungry'
+counts_trans <- table(data_trans$transition)
+## SATED
+# check proportion transitions
+## exclude remain trials
+data_transs <- subset(data_sated_long, transition!='remain')
+data_transs <- subset(data_transs, transition!='NA')
+counts_transs <- table(data_transs$transition)
+data_transs$condition <- 'sated'
+
+trans_h2 <- data_trans %>%
+  group_by(subject, transition) %>%
+  summarise(count = n()) %>%
+  group_by(subject) %>%
+  mutate(prop = count / sum(count),
+         std_error = sqrt(prop * (1 - prop) / sum(count))) %>%
+  select(subject, transition, prop, std_error)
+trans_h2$condition<- 'hungry'
+
+trans_s2 <- data_transs %>%
+  group_by(subject, transition) %>%
+  summarise(count = n()) %>%
+  group_by(subject) %>%
+  mutate(prop = count / sum(count),
+         std_error = sqrt(prop * (1 - prop) / sum(count))) %>%
+  select(subject, transition, prop, std_error)
+trans_s2$condition<- 'sated'
+
+
+trans_h2 <- subset(trans_h2, subject %in% trans_s2$subject)
+trans_s2 <- subset(trans_s2, subject %in% trans_h2$subject)
+
+trans<-rbind(trans_h2, trans_s2)
+
+box_plot<- ggplot(data = trans, aes(x = transition, y = prop, fill = condition)) +
+  geom_boxplot(position = position_dodge(width = 0.75)) +
+  #geom_hline(yintercept = 0, color = "red") +
+  xlab("Transition Type") +
+  ylab("Proportion") +
+  #ggtitle("Payne index across conditions") +
+  scale_fill_manual(values = c("sated" = "cornflowerblue", "hungry" = "gold"))+
+  ylim(0, 1)+
+  myTheme
+box_plot
+ggsave("average_transitions2.png", width = 8, height = 6, plot = last_plot(), dpi = 300)
+
+```
+#### 3.6 Relevant stats
+```{r}
+# Create all combinations of subject, condition, and transitions
+all_combinations <- expand.grid(
+  subject = unique(trans$subject),
+  condition = unique(trans$condition),
+  transition = unique(trans$transition)
+)
+
+# Merge with the original dataframe to fill in missing rows
+trans_filled <- merge(all_combinations, trans, by = c("subject", "condition", "transition"), all.x = TRUE)
+
+# Replace missing values with smallest number
+trans_filled[is.na(trans_filled)] <- .Machine$double.eps
+
+# Perform statistical tests on the imputed data
+# Get unique levels of transition
+transition_levels <- unique(trans_filled$transition)
+
+# Create an empty list to store results
+wilcox_results <- list()
+
+# Loop through each level of transition
+for (level in transition_levels) {
+  # Subset the data for the current transition level
+  subset_data <- trans_filled[trans_filled$transition == level, ]
+  
+  # Perform Wilcoxon signed-rank test
+  wilcox_result <- wilcox.test(prop ~ condition, data = subset_data)
+  
+  # Store the result in the list
+  wilcox_results[[level]] <- wilcox_result
+}
+
+# summary
+library(rstatix)
+trans_filled %>%
+  group_by(condition, transition) %>%
+  get_summary_stats(prop, type = "mean_sd")
+
+## No differences between conditions
+```
+
+```{r}
+library(tidyr)
+#transform to wide format
+trans_wide <- trans_filled %>%
+  pivot_wider(names_from = transition, values_from = c(prop, std_error))
+
+trans_wide$payne <- (trans_wide$`prop_within alternative` - trans_wide$`prop_within attributes`)/(trans_wide$`prop_within alternative` + trans_wide$`prop_within attributes`)
+
+box_plot<- ggplot(data = trans_wide, aes(x = condition, y = payne, fill = condition)) +
+  geom_boxplot(position = position_dodge(width = 0.75)) +
+  geom_hline(yintercept = 0, color = "black", linetype = "dashed") +
+  xlab("Condition") +
+  ylab("Payne Index") +
+  #ggtitle("Payne index across conditions") +
+  scale_fill_manual(values = c("sated" = "cornflowerblue", "hungry" = "gold"))+
+  #ylim(-0.1, 0.01)+
+  myTheme
+box_plot
+
+ggsave("payneindex.png", width = 7.5, height = 5,plot = last_plot(), dpi = 300)
+
+# Get stats
+## ASSUMPTIONS
+# 1.normality assumption met! Shapiro-Wilk
+trans_wide %>%
+  group_by(condition) %>%
+  shapiro_test(payne) 
+#-->violated
+
+#summary stats
+trans_wide %>%
+  group_by(condition) %>%
+  get_summary_stats(payne, type = "mean_sd")
+
+wilcox_payne<- wilcox.test(payne ~ condition, data = trans_wide)
+wilcox_payne
+```

@@ -1,0 +1,281 @@
+---
+title: "Food Images"
+author: "Jennifer March (jennifer.march@uni-hamburg.de)"
+date: "2024-09-09"
+output: html_document
+---
+
+### Information
+This script creates the quantile plots and VD plots.
+
+### 1 Preparation
+#### 1.1 Load Data
+```{r}
+#clear working environment
+rm(list=ls())
+
+#clear all plots
+if(!is.null(dev.list())) dev.off()
+
+load("food_data2.RData")
+load("food_data.RData")
+```
+
+#### 1.2 Create Theme
+```{r}
+library(ggplot2)
+
+myTheme <- theme(
+  axis.line = element_line(colour = "black"), 
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(),  
+  panel.border = element_blank(),   
+  panel.background = element_blank(),
+  text=element_text(size=16, colour = "black"), 
+  axis.title.x = element_text(size=20, face="bold", colour = "black"), 
+  axis.title.y = element_text( size=20, face="bold", colour = "black"),
+  axis.text = element_text(size=16),
+  strip.text =  element_text( size=16),
+  strip.background = element_rect(fill = "white", colour = "black"),
+  legend.background = element_rect(colour = "black"),
+  legend.key = element_blank(),
+  legend.key.size = unit(3, "lines"))
+```
+
+
+### 2 Quantile Plots
+
+```{r}
+create_quantile_plot <- function(data, choice_col, condition_col, rt_col, quants = seq(0.1, 0.9, 0.2), label_type = "default") {
+  
+  # Calculate quantiles for each combination
+  calc_quants <- function(df, cond, choice) {
+    quantile(df[[rt_col]][df[[condition_col]] == cond & df[[choice_col]] == choice], quants) / 1000
+  }
+  
+  quants_option1_hungry <- calc_quants(data, 'hungry', 1)
+  quants_option1_sated <- calc_quants(data, 'sated', 1)
+  quants_option2_hungry <- calc_quants(data, 'hungry', 0)
+  quants_option2_sated <- calc_quants(data, 'sated', 0)
+  
+  # Calculate overall choice probabilities
+  calc_prob <- function(df, cond, choice) {
+    mean(df[[choice_col]] == choice & df[[condition_col]] == cond)
+  }
+  
+  prob_option1_sated <- calc_prob(data, 'sated', 1)
+  prob_option1_hungry <- calc_prob(data, 'hungry', 1)
+  prob_option2_sated <- calc_prob(data, 'sated', 0)
+  prob_option2_hungry <- calc_prob(data, 'hungry', 0)
+  
+  # Set labels based on label_type
+  if (label_type == "default") {
+    label1 <- "tasty"
+    label2 <- "healthy"
+  } else if (label_type == "wanted") {
+    label1 <- "wanted"
+    label2 <- "healthy"
+  } else if (label_type == "caloric") {
+    label1 <- "high caloric"
+    label2 <- "low caloric"
+  } else {
+    stop("Invalid label_type. Choose 'default', 'wanted', or 'caloric'.")
+  }
+  
+  # Create dataframe for plotting
+  quant_data <- data.frame(
+    choice = rep(c(label1, label2), each = length(quants) * 2),
+    condition = rep(c("hungry", "sated"), each = length(quants), times = 2),
+    quants = rep(quants, times = 4),
+    proportion = c(
+      2 * prob_option1_hungry * quants,
+      2 * prob_option1_sated * quants,
+      2 * prob_option2_hungry * quants,
+      2 * prob_option2_sated * quants
+    ),
+    rt_quants = c(
+      quants_option1_hungry,
+      quants_option1_sated,
+      quants_option2_hungry,
+      quants_option2_sated
+    )
+  )
+  
+  quant_data$cc <- paste(quant_data$choice, quant_data$condition)
+  
+  # Create color and linetype vectors
+  color_values <- c("gold", "cornflowerblue", "gold", "cornflowerblue")
+  names(color_values) <- c(paste(label2, "hungry"), paste(label2, "sated"), 
+                           paste(label1, "hungry"), paste(label1, "sated"))
+  
+  linetype_values <- c("solid", "solid", "dashed", "dashed")
+  names(linetype_values) <- c(paste(label2, "hungry"), paste(label2, "sated"), 
+                              paste(label1, "hungry"), paste(label1, "sated"))
+  
+  # Create plot
+  p <- ggplot(quant_data, aes(x = rt_quants, y = proportion, color = cc, linetype = cc, group = cc)) +
+    geom_point(stat = "identity", position = position_identity(), size = 3) +
+    geom_line(position = position_identity(), lwd = 1.5) +
+    xlab("RT (sec)") +
+    ylab("Cumulative Probability") +
+    ylim(0, 1) +
+    xlim(1, 4.5) +
+    scale_color_manual(values = color_values) +
+    scale_linetype_manual(values = linetype_values) +
+    guides(
+      color = guide_legend(title = NULL),
+      linetype = guide_legend(title = NULL)
+    ) +
+    myTheme  
+  
+  return(p)
+}
+
+
+
+```
+
+
+
+```{r}
+data_combined_neu2$choice3<-999
+for (i in 1:nrow(data_combined_neu2)){
+  if(((data_combined_neu2$response[i]=='left') && (data_combined_neu2$mean_taste_left[i]>=data_combined_neu2$mean_taste_right[i]) && (data_combined_neu2$mean_health_left[i]<=data_combined_neu2$mean_health_right[i])) || ((data_combined_neu2$response[i]=='right') && (data_combined_neu2$mean_taste_left[i]<=data_combined_neu2$mean_taste_right[i]) && (data_combined_neu2$mean_health_left[i]>=data_combined_neu2$mean_health_right[i]))) { #left want or right want
+    data_combined_neu2$choice3[i]<-1
+  }else if (((data_combined_neu2$response[i]=='left') && (data_combined_neu2$mean_taste_left[i]<data_combined_neu2$mean_taste_right[i]) && (data_combined_neu2$mean_health_left[i]>data_combined_neu2$mean_health_right[i])) || ((data_combined_neu2$response[i]=='right') && (data_combined_neu2$mean_taste_left[i]>data_combined_neu2$mean_taste_right[i]) && (data_combined_neu2$mean_health_left[i]<data_combined_neu2$mean_health_right[i]))) {
+    data_combined_neu2$choice3[i]<-0
+  }
+}
+
+data_combined3<-subset(data_combined_neu2, choice3 != 999)
+
+p1 <- create_quantile_plot(data_combined2, "choice2", "condition", "RT", label_type = "default")
+p2 <- create_quantile_plot(data_combined_want2, "choice_want", "condition", "RT", label_type = "wanted")
+p3 <- create_quantile_plot(data_combined_neu2, "choice_kcal", "condition", "RT", label_type = "caloric")
+
+p4 <- create_quantile_plot(data_combined3, "choice3", "condition", "RT", label_type = "default")
+p1
+p2
+p3
+p4
+
+ggsave("cumprop_taste.png", p1, width = 7, height = 5)
+ggsave("cumprop_want.png", p2, width = 7, height = 5)
+ggsave("cumprop_cal.png", p3, width = 7, height = 5)
+```
+
+
+### 3 VD Plots
+Prepare data
+```{r}
+library(dplyr)
+#calculate the value differences left - right
+data_combined_neu$taste_vd2<-data_combined_neu$taste_left-data_combined_neu$taste_right
+data_combined_neu$health_vd2<-data_combined_neu$health_left-data_combined_neu$health_right
+data_combined_neu$nutri_diff2<-data_combined_neu$nutri_left2-data_combined_neu$nutri_right2
+data_combined_neu$pref_vd2<-data_combined_neu$pref_left-data_combined_neu$pref_right
+data_combined_neu$cal_vd2<-data_combined_neu$cal_left-data_combined_neu$cal_right
+
+# mean ratings
+data_combined_neu$taste_vd3<-data_combined_neu$mean_taste_left-data_combined_neu$mean_taste_right
+data_combined_neu$health_vd3<-data_combined_neu$mean_health_left-data_combined_neu$mean_health_right
+data_combined_neu$pref_vd3<-data_combined_neu$mean_pref_left-data_combined_neu$mean_pref_right
+data_combined_neu$cal_vd3<-data_combined_neu$mean_cal_left-data_combined_neu$mean_cal_right
+
+data_combined_neu<-data_combined_neu %>% 
+  dplyr::mutate(response2=dplyr::recode(response, 'left'=1, 'right'=0))
+```
+
+
+```{r}
+vd_graphs <- function(data, value_column, x_label) {
+  # Define the number of bins
+  num_bins <- 25
+  
+  # Create equally populated bins based on quantiles
+  sub_dat <- data %>%
+    group_by(condition) %>%
+    mutate(value_bin = ntile(!!sym(value_column), num_bins)) %>%
+    mutate(value_bin = value_bin - 13) %>%
+    group_by(value_bin, condition) %>%
+    summarise(meanRT = mean(RT), 
+              meanchoice = mean(response2), 
+              meanvalue = mean(!!sym(value_column)),
+              seRT = sd(RT) / sqrt(n()), 
+              sechoice = sqrt(mean(response2) * (1 - mean(response2)) / n()),
+              .groups = "drop")
+  
+  # Sort the data frame by value_bin within each condition
+  sub_dat <- sub_dat %>%
+    arrange(condition, value_bin)
+  
+  # Create the RT plot
+  rt_plot <- ggplot(sub_dat, aes(x = value_bin, y = meanRT, color = condition, group = condition)) +
+    geom_smooth(aes(y = meanRT, fill = condition), method = "loess", span = 0.75, se = TRUE, linetype = "solid", alpha=0.3) +
+    scale_color_manual(values = c("gold", "cornflowerblue")) +
+    scale_fill_manual(values = c("gold", "cornflowerblue")) +
+    labs(x = paste(x_label, "Value Difference"), y = "Response Time") +
+    ylim(2150, 2750) +
+    myTheme
+  
+  # Create the choice plot
+  choice_plot <- ggplot(sub_dat, aes(x = value_bin, y = meanchoice, color = condition, group = condition)) +
+    geom_smooth(aes(y = meanchoice, fill = condition), method = "loess", span = 0.75, se = TRUE, linetype = "solid", alpha=0.3) +
+    scale_color_manual(values = c("gold", "cornflowerblue")) +
+    scale_fill_manual(values = c("gold", "cornflowerblue")) +
+    labs(x = paste(x_label, "Value Difference"), y = "P(Choice Left)") +
+    ylim(0, 1) +
+    myTheme
+  
+  # Return a list containing both plots
+  return(list(rt_plot = rt_plot, choice_plot = choice_plot))
+}
+```
+
+```{r}
+# For taste graphs
+taste_graphs <- vd_graphs(data_combined_neu, "taste_vd2", "Taste")
+mean_taste_graphs <- vd_graphs(data_combined_neu, "taste_vd3", "Taste")
+taste_graphs
+mean_taste_graphs
+# For health graphs
+health_graphs <- vd_graphs(data_combined_neu, "health_vd2", "Health")
+mean_health_graphs <- vd_graphs(data_combined_neu, "health_vd3", "Health")
+health_graphs
+mean_health_graphs
+# For nutrition graphs
+nutri_graphs <- vd_graphs(data_combined_neu, "nutri_diff2", "Nutri")
+nutri_graphs
+# For preference graphs
+pref_graphs <- vd_graphs(data_combined_neu, "pref_vd2", "Preference")
+mean_pref_graphs <- vd_graphs(data_combined_neu, "pref_vd3", "Preference")
+pref_graphs
+mean_pref_graphs
+# For calorie graphs
+cal_graphs <- vd_graphs(data_combined_neu, "cal_vd2", "Caloric")
+mean_cal_graphs <- vd_graphs(data_combined_neu, "cal_vd3", "Caloric")
+cal_graphs
+mean_cal_graphs
+
+ggsave("taste_choice.png", taste_graphs$choice_plot, width = 8, height = 6)
+ggsave("taste_rt.png", taste_graphs$rt_plot, width = 8, height = 6)
+
+ggsave("health_choice.png", health_graphs$choice_plot, width = 8, height = 6)
+ggsave("health_rt.png", health_graphs$rt_plot, width = 8, height = 6)
+
+ggsave("nutri_choice.png", nutri_graphs$choice_plot, width = 8, height = 6)
+ggsave("nutri_rt.png", nutri_graphs$rt_plot, width = 8, height = 6)
+
+ggsave("pref_choice.png", pref_graphs$choice_plot, width = 8, height = 6)
+ggsave("pref_rt.png", pref_graphs$rt_plot, width = 8, height = 6)
+
+ggsave("cal_choice.png", cal_graphs$choice_plot, width = 8, height = 6)
+ggsave("cal_rt.png", cal_graphs$rt_plot, width = 8, height = 6)
+
+```
+
+
+
+
+
+

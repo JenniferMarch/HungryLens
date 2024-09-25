@@ -1,0 +1,356 @@
+---
+title: "Main_Food"
+author: "Jennifer March (jennifer.march@uni-hamburg.de)"
+date: "2024-07-23"
+output: html_document
+---
+
+### Information
+Here I am running all possible GLMMs for the different contrast: taste-health want-health and high cal low cal. 
+This takes a while (Days dependeing on your system), so I added the script GLMM_fast to only execute the best models (based on AIC).
+
+### 1 Preperations
+#### 1.1 Load Data
+```{r}
+#clear working environment
+rm(list=ls())
+
+#clear all plots
+if(!is.null(dev.list())) dev.off()
+load("data_prep.RData")
+load("food_data.RData")
+```
+#### 1.2 Create Theme
+```{r}
+library(ggplot2)
+myTheme <- theme(
+  axis.line = element_line(colour = "black"), 
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(),  
+  panel.border = element_blank(),   
+  panel.background = element_blank(),
+  text=element_text(size=16, colour = "black"), 
+  axis.title.x = element_text(size=20, face="bold", colour = "black"), 
+  axis.title.y = element_text( size=20, face="bold", colour = "black"),
+  axis.text = element_text(size=16),
+  strip.text =  element_text( size=16),
+  strip.background = element_rect(fill = "white", colour = "black"),
+  legend.background = element_rect(colour = "black"),
+  legend.key = element_blank(),
+  legend.key.size = unit(3, "lines"))
+```
+
+#### 1.3 Functions for best GLMs
+a) Function to find best Model
+
+```{r}
+find_best_glmm3 <- function(data, response, predictors, random_effect, mandatory_predictors, family=binomial(link="logit"), control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=1e6)), top_n=5) {
+  
+  # Generate all possible combinations of predictors, including interactions
+  all_models <- list()
+  formulas <- list()
+  
+  # Ensure all mandatory predictors are included
+  if (!all(mandatory_predictors %in% predictors)) {
+    missing_predictors <- setdiff(mandatory_predictors, predictors)
+    stop(paste("Mandatory predictor(s)", paste(missing_predictors, collapse=", "), "are not in the list of predictors"))
+  }
+  
+  # Remove the mandatory predictors from the combinations to avoid duplication
+  optional_predictors <- setdiff(predictors, mandatory_predictors)
+  
+  # Generate formulas with mandatory predictors and combinations of optional predictors
+  for(i in 0:length(optional_predictors)) {
+    combinations <- combn(optional_predictors, i, simplify = FALSE)
+    formulas <- c(formulas, lapply(combinations, function(combo) 
+      paste(c(mandatory_predictors, combo), collapse = " + ")))
+  }
+  
+  all_predictors <- c(mandatory_predictors, optional_predictors)
+  interactions <- combn(all_predictors, 2, FUN = function(x) paste(x, collapse = "*"), simplify = FALSE)
+
+  # Generate formulas with different numbers of interaction terms
+  for (i in 0:length(interactions)) {
+    interaction_combinations <- combn(interactions, i, simplify = FALSE)
+    new_formulas <- lapply(interaction_combinations, function(combo) {
+      paste(c(all_predictors, combo), collapse = " + ")
+    })
+    formulas <- c(formulas, new_formulas)
+  }
+  
+  # Fit models for each formula
+  for(formula in formulas) {
+    model_formula <- as.formula(paste(response, "~", formula, "+ (1 +", random_effect, "|subject)"))
+    print(model_formula)  # To track progress
+    model <- try(glmer(model_formula, data = data, family = family, control = control))
+    if (!inherits(model, "try-error")) {
+      aic_value <- AIC(model)
+      all_models[[length(all_models) + 1]] <- list(model = model, aic = aic_value, formula = formula)
+    }
+  }
+  
+  # Sort models by AIC
+  sorted_models <- all_models[order(sapply(all_models, function(x) x$aic))]
+  
+  # Get the top N models
+  top_models <- head(sorted_models, top_n)
+  
+  # Create a summary data frame
+  summary_df <- data.frame(
+    Formula = sapply(top_models, function(x) x$formula),
+    AIC = sapply(top_models, function(x) x$aic)
+  )
+  
+  # Return a list containing the best model, top N models, and summary
+  return(list(
+    best_model = top_models[[1]]$model,
+    top_models = top_models,
+    summary = summary_df
+  ))
+}
+```
+
+
+
+#### 1.3 Justification Random Effects
+##### 1.3.1 Taste - Health
+```{r}
+library(dplyr)
+library(lme4)
+library(lmerTest)
+# Random effects justified?
+data_combined<-data_combined %>% 
+  dplyr::mutate(choice2=dplyr::recode(choice, 'taste'=1, 'health'=0))
+
+data_combined<-data_combined %>% 
+  dplyr::mutate(response2=dplyr::recode(response, 'left'=1, 'right'=0))
+
+#is random effects justified?
+food_model0 <- glm(choice2~1, data=data_combined, family=binomial)
+food_model1 <- glmer(choice2~(1|subject), data=data_combined, family=binomial)
+food_model2 <- glmer(choice2~(1+condition|subject), data=data_combined, family=binomial)
+
+AIC(logLik(food_model0))
+AIC(logLik(food_model1))
+AIC(logLik(food_model2))
+
+# Best Model: Random Intercept for each subject, slope allowed to vary between conditions
+```
+
+
+
+##### 1.3.2 Want - Health
+```{r}
+data_combined_want<-data_combined_want %>% 
+  dplyr::mutate(response2=dplyr::recode(response, 'left'=1, 'right'=0))
+
+
+#is random effects justified?
+food_modelw0 <- glm(choice_want~1, data=data_combined_want, family=binomial)
+food_modelw1 <- glmer(choice_want~(1|subject), data=data_combined_want, family=binomial)
+food_modelw2 <- glmer(choice_want~(1+condition|subject), data=data_combined_want, family=binomial)
+
+AIC(logLik(food_modelw0))
+AIC(logLik(food_modelw1))
+AIC(logLik(food_modelw2))
+
+# Best Model: Random Intercept for each subject, slope allowed to vary between conditions
+```
+
+##### 1.3.3 High Cal - Low Cal
+```{r}
+data_combined_neu<-data_combined_neu %>% 
+  dplyr::mutate(response2=dplyr::recode(response, 'left'=1, 'right'=0))
+#is random effects justified?
+food_modelc0 <- glm(choice_kcal~1, data=data_combined_neu, family=binomial)
+food_modelc1 <- glmer(choice_kcal~(1|subject), data=data_combined_neu, family=binomial)
+food_modelc2 <- glmer(choice_kcal~(1+condition|subject), data=data_combined_neu, family=binomial)
+
+AIC(logLik(food_modelc0))
+AIC(logLik(food_modelc1))
+AIC(logLik(food_modelc2))
+
+# Best Model: Random Intercept for each subject, slope allowed to vary between conditions
+```
+
+
+```{r}
+#exclude NaNs
+data_combined2 <- subset(data_combined,rel_dwelldiff_chosen!='NaN')
+data_combined_want2 <- subset(data_combined_want,rel_dwelldiff_chosen!='NaN')
+data_combined_neu2 <- subset(data_combined_neu,rel_dwelldiff_chosen!='NaN')
+```
+
+
+### 2 GLMM Choice
+
+```{r}
+data_combined2$dwelldiff_taste_rel <- 0
+for (i in 1:nrow(data_combined2)){
+  if((data_combined2$choice2[i]==1) && (data_combined2$response2[i]==1)) { # taste & left
+    data_combined2$dwelldiff_taste_rel[i] = (data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])/(data_combined2$foodright_time[i]+data_combined2$nutriright_time[i]+data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])
+  }else if ((data_combined2$choice2[i]==1) && (data_combined2$response2[i]==0)) { # taste & right
+    data_combined2$dwelldiff_taste_rel[i] = (data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])/(data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i]+data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])
+  }else if ((data_combined2$choice2[i]==0) && (data_combined2$response2[i]==1)) { # health & left
+    data_combined2$dwelldiff_taste_rel[i] = (data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])/(data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i]+data_combined2$foodright_time[i]+data_combined2$nutriright_time[i])
+  }else if ((data_combined2$choice2[i]==0) && (data_combined2$response2[i]==0)) { # health & right
+    data_combined2$dwelldiff_taste_rel[i] = (data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])/(data_combined2$foodright_time[i]+data_combined2$nutriright_time[i]+data_combined2$foodleft_time[i]+data_combined2$nutrileft_time[i])
+  }
+} 
+```
+
+#### 2.1 Taste -Health GLMM
+```{r}
+# Simple in line with Preregistration
+taste_glmm<- find_best_glmm3(
+  data = data_combined2,
+  response = "choice2",
+  predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 2
+)
+
+# with demographic predictors
+taste_glmm2<- find_best_glmm3(
+  data = data_combined2,
+  response = "choice2",
+  predictors = c("condition", "scale(dwelldiff_taste_rel)", "scale(rel_dwelldiff_taste)",  "BMI_cent", "age_cent"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 5
+)
+
+# with all predictors
+taste_glmm3<- find_best_glmm3(
+  data = data_combined2,
+  response = "choice2",
+  predictors = c("condition", "scale(dwelldiff_taste_rel)", "scale(rel_dwelldiff_taste)",  "BMI_cent", "age_cent","scale(PA_change)", "scale(NA_change)", "scale(hs_change)", "scale(external)", "scale(emotional)", "scale(restricted)"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 5
+)
+
+summary(taste_glmm$best_model)
+summary(taste_glmm2$best_model)
+summary(taste_glmm3$best_model)
+
+
+anova(taste_glmm$best_model,taste_glmm2$best_model)
+anova(taste_glmm2$best_model,taste_glmm3$best_model)
+
+```
+
+
+#### 2.1 Want - Health GLMM
+
+```{r}
+data_combined_want2$dwelldiff_taste_rel <- 0
+for (i in 1:nrow(data_combined_want2)){
+  if((data_combined_want2$choice_want[i]==1) && (data_combined_want2$response2[i]==1)) { # taste & left
+    data_combined_want2$dwelldiff_taste_rel[i] = (data_combined_want2$foodleft_time[i]+data_combined_want2$nutrileft_time[i])/(data_combined_want2$foodright_time[i]+data_combined_want2$nutriright_time[i]+data_combined_want2$foodleft_time[i]+data_combined_want2$nutrileft_time[i])
+  }else if ((data_combined_want2$choice_want[i]==1) && (data_combined_want2$response2[i]==0)) { # taste & right
+    data_combined_want2$dwelldiff_taste_rel[i] = (data_combined_want2$foodright_time[i]+data_combined_want2$nutriright_time[i])/(data_combined_want2$foodleft_time[i]+data_combined_want2$nutrileft_time[i]+data_combined_want2$foodright_time[i]+data_combined_want2$nutriright_time[i])
+  }else if ((data_combined_want2$choice_want[i]==0) && (data_combined_want2$response2[i]==1)) { # health & left
+    data_combined_want2$dwelldiff_taste_rel[i] = (data_combined_want2$foodright_time[i]+data_combined_want2$nutriright_time[i])/(data_combined_want2$foodleft_time[i]+data_combined_want2$nutrileft_time[i]+data_combined_want2$foodright_time[i]+data_combined_want2$nutriright_time[i])
+  }else if ((data_combined_want2$choice_want[i]==0) && (data_combined_want2$response2[i]==0)) { # health & right
+    data_combined_want2$dwelldiff_taste_rel[i] = (data_combined_want2$foodleft_time[i]+data_combined_want2$nutrileft_time[i])/(data_combined_want2$foodright_time[i]+data_combined_want2$nutriright_time[i]+data_combined_want2$foodleft_time[i]+data_combined_want2$nutrileft_time[i])
+  }
+} 
+```
+
+```{r}
+# Simple in line with Preregistration
+want_glmm<- find_best_glmm3(
+  data = data_combined_want2,
+  response = "choice_want",
+  predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 2
+)
+
+
+want_glmm3<- find_best_glmm3(
+  data = data_combined_want2,
+  response = "choice_want",
+  predictors = c("condition", "scale(dwelldiff_taste_rel)", "scale(rel_dwelldiff_taste)",  "BMI_cent", "age_cent"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 5
+)
+
+# Test complex model, in line with exploratory analyses from preregistration
+# include also questionnaire data for which we do not have data from all participants
+# want_glmm4<- find_best_glmm3(
+#   data = data_combined_want2,
+#   response = "choice_want",
+#   predictors = c("condition", "scale(dwelldiff_taste_rel)", "scale(rel_dwelldiff_taste)", "BMI_cent", "age_cent", "scale(PA_change)", "scale(NA_change)", "scale(hs_change)", "scale(external)", "scale(emotional)", "scale(restricted)"),
+#   random_effect = "condition",
+#   mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+#   top_n = 5
+# )
+
+summary(want_glmm3$best_model)
+
+
+summary(want_glmm)
+summary(want_glmm3$best_model)
+#summary(want_glmm4$best_model)
+
+anova(want_glmm, want_glmm3$best_model)
+
+save(want_glmm, want_glmm3, file="want_GLMMs.RData")
+```
+
+
+#### 2.3 High Cal Low Cal
+
+```{r}
+data_combined_neu2$dwelldiff_taste_rel <- 0
+for (i in 1:nrow(data_combined_neu2)){
+  if((data_combined_neu2$choice_kcal[i]==1) && (data_combined_neu2$response2[i]==1)) { # taste & left
+    data_combined_neu2$dwelldiff_taste_rel[i] = (data_combined_neu2$foodleft_time[i]+data_combined_neu2$nutrileft_time[i])/(data_combined_neu2$foodright_time[i]+data_combined_neu2$nutriright_time[i]+data_combined_neu2$foodleft_time[i]+data_combined_neu2$nutrileft_time[i])
+  }else if ((data_combined_neu2$choice_kcal[i]==1) && (data_combined_neu2$response2[i]==0)) { # taste & right
+    data_combined_neu2$dwelldiff_taste_rel[i] = (data_combined_neu2$foodright_time[i]+data_combined_neu2$nutriright_time[i])/(data_combined_neu2$foodleft_time[i]+data_combined_neu2$nutrileft_time[i]+data_combined_neu2$foodright_time[i]+data_combined_neu2$nutriright_time[i])
+  }else if ((data_combined_neu2$choice_kcal[i]==0) && (data_combined_neu2$response2[i]==1)) { # health & left
+    data_combined_neu2$dwelldiff_taste_rel[i] = (data_combined_neu2$foodright_time[i]+data_combined_neu2$nutriright_time[i])/(data_combined_neu2$foodleft_time[i]+data_combined_neu2$nutrileft_time[i]+data_combined_neu2$foodright_time[i]+data_combined_neu2$nutriright_time[i])
+  }else if ((data_combined_neu2$choice_kcal[i]==0) && (data_combined_neu2$response2[i]==0)) { # health & right
+    data_combined_neu2$dwelldiff_taste_rel[i] = (data_combined_neu2$foodleft_time[i]+data_combined_neu2$nutrileft_time[i])/(data_combined_neu2$foodright_time[i]+data_combined_neu2$nutriright_time[i]+data_combined_neu2$foodleft_time[i]+data_combined_neu2$nutrileft_time[i])
+  }
+} 
+```
+
+
+
+```{r}
+# Find best GLMM
+cal_glmm<- find_best_glmm3(
+  data = data_combined_neu2,
+  response = "choice_kcal",
+  predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 2
+)
+  # Test complex model, in line with exploratory analyses from preregistration
+cal_glmm2<- find_best_glmm3(
+  data = data_combined_neu2,
+  response = "choice_kcal",
+  predictors = c("condition","scale(dwelldiff_taste_rel)", "scale(rel_dwelldiff_taste)", "BMI_cent", "age_cent"),
+  random_effect = "condition",
+  mandatory_predictors = c("condition", "scale(dwelldiff_taste_rel)"),
+  top_n = 5
+)
+
+
+summary(cal_glmm$best_model)
+summary(cal_glmm2$best_model)
+
+anova(cal_glmm$best_model, cal_glmm2$best_model)
+save(cal_glmm, cal_glmm2, file="cal_GLMMs.RData")
+
+save(data_combined2, data_combined_want2, data_combined_neu2, file="food_data2.RData")
+```
+
+

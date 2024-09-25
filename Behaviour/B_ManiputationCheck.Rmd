@@ -1,0 +1,296 @@
+---
+title: "Manipulation Check"
+author: "Jennifer March (jennifer.march@uni-hamburg.de"
+date: "2024-09-13"
+output: html_document
+---
+
+
+### 1 Preperations
+#### 1.1 Load Data
+```{r}
+#clear working environment
+rm(list=ls())
+
+#clear all plots
+if(!is.null(dev.list())) dev.off()
+
+load("food_data.RData")
+```
+
+#### 1.2 Chreate Theme for figures
+```{r}
+library(ggplot2)
+myTheme <- theme(
+  axis.line = element_line(colour = "black"), 
+  panel.grid.major = element_blank(), 
+  panel.grid.minor = element_blank(),  
+  panel.border = element_blank(),   
+  panel.background = element_blank(),
+  text=element_text(size=16, colour = "black"), 
+  axis.title.x = element_text(size=20, face="bold", colour = "black"), 
+  axis.title.y = element_text( size=20, face="bold", colour = "black"),
+  axis.text = element_text(size=16),
+  strip.text =  element_text( size=16),
+  strip.background = element_rect(fill = "white", colour = "black"),
+  legend.background = element_rect(colour = "black"),
+  legend.key = element_blank(),
+  legend.key.size = unit(3, "lines"))
+```
+
+### 2 Manipulation Check
+Did the shake reduce hunger ratings?
+**Problem** 3 timepoint measurements in hungry and 4 Timepoint measurements in sated condition
+**Solution** RM ANOVA on difference scores t3 or t4 - t1. In case of hungry, we might expect no difference / increase; in case of sated we expect decrease in hunger rating
+**Result** confirm expectation
+#### 2.1 Visual
+```{r}
+#dealing with different nr of measurement points --> difference scores
+control_wide <- control2 %>%
+  pivot_wider(names_from = timepoint, values_from = c(hungry, PosAff, NegAff))
+
+control_wide_s<-subset(control_wide, condition=='sated')
+control_wide_h<-subset(control_wide, condition=='hungry')
+
+control_wide_s$HSdiff<-control_wide_s$hungry_t3-control_wide_s$hungry_t0
+control_wide_s$PosAff_diff<-control_wide_s$PosAff_t3-control_wide_s$PosAff_t0
+control_wide_s$NegAff_diff<-control_wide_s$NegAff_t3-control_wide_s$NegAff_t0
+
+control_wide_h$HSdiff<-control_wide_h$hungry_t3-control_wide_h$hungry_t1
+control_wide_h$PosAff_diff<-control_wide_h$PosAff_t3-control_wide_h$PosAff_t1
+control_wide_h$NegAff_diff<-control_wide_h$NegAff_t3-control_wide_h$NegAff_t1
+
+control_wide2<-rbind(control_wide_s, control_wide_h)
+
+control_wide3 <- control_wide2 %>%
+  group_by(subject) %>%
+  mutate(diff = hungry_t1[condition == 'hungry'] - hungry_t0[condition == 'sated'])
+
+#make plots
+plot1 <- ggplot(control_wide3, aes(x = condition, y = HSdiff, color = condition)) +
+  geom_boxplot(position = position_dodge(width = 0.75)) +
+  labs(
+       x = "Condition",
+       y = "Difference Hunger state") +
+  scale_color_manual(values = c("hungry" = "gold", "sated" = "cornflowerblue")) +
+  theme(legend.position = "none") +
+  myTheme
+
+# New boxplot for ConditionDiff
+plot2 <- ggplot(control_wide3, aes(x = "all", y = diff)) +
+  geom_boxplot(color = '#3CC71E') +
+  labs(
+       x = "hungry t1-sated t1",
+       y = "Difference Hunger state") +
+  myTheme
+
+# Combine the two plots
+control_wide3$all_data <- "all"
+
+# Combine the two boxplots
+combined_plot <- ggplot(control_wide3, aes(x = condition, y = HSdiff, color = condition)) +
+  geom_boxplot(position = position_dodge(width = 0.75), lwd=1) +
+  geom_boxplot(aes(x = all_data, y = diff),position = position_dodge(width = 0.75),color = '#3CC71E', lwd=1) +
+  geom_hline(yintercept = 0.5, color = "black", linetype="dashed")+
+  labs(x = "Condition", y = "Difference Hunger Rating") +
+  scale_color_manual(values = c("hungry" = "gold", "sated" = "cornflowerblue")) +
+  theme(legend.position = "none") +
+  ylim(-100, 100)+
+  myTheme
+
+ggsave("HS.png", width = 3, height = 5,plot = last_plot(), dpi = 300)
+
+# Show the combined plot
+print(combined_plot)
+
+```
+
+
+#### 2.2 Relevant tests hunger state
+```{r}
+#RM ANOVA on Difference scores
+## ASSUMPTIONS
+# 1.normality assumption met! Shapiro-Wilk
+control_wide3 %>%
+  group_by(condition) %>%
+  shapiro_test(HSdiff) 
+#2. Outliers --> 2 outliers in HSdiff, not extreme!
+control_wide3 %>%
+  group_by(condition) %>%
+  identify_outliers(HSdiff)
+
+#summary stats
+control_wide3 %>%
+  group_by(condition) %>%
+  get_summary_stats(HSdiff, type = "mean_sd")
+
+#RM ANOVA
+HS_dat<-control_wide3[order(control_wide3$subject), ]
+HS_dat<-control_wide3[, c("HSdiff", "condition", "subject")] #whyever this is necessary :(
+HS_dat$subject <- as.factor(HS_dat$subject)
+rmanova_HS <- aov(HSdiff ~ condition + Error(subject / condition), data = HS_dat)
+summary(rmanova_HS)
+
+#effect size:
+partial_eta_squared <- effectsize::eta_squared(rmanova_HS)
+
+#Posthoc tests
+HS_dath<-subset(HS_dat, condition =="hungry")
+HS_dats<-subset(HS_dat, condition =="sated")
+
+ttest1<-t.test(HS_dath$HSdiff, HS_dats$HSdiff, paired=TRUE, alternative = "greater")
+ttest1
+# Calculate Cohen's d for the paired t-test
+effect_size1 <- ttest1$statistic / sqrt(ttest1$parameter)
+
+
+#t0 sated vs t1 hungry
+t0_hs <- control2 %>% 
+  filter(condition == "sated" & timepoint == "t0")
+t1_hs_h <- control2 %>% 
+  filter(condition == "hungry" & timepoint == "t1")
+
+#no diff at arrival 
+m3<-mean(t1_hs_h$hungry)
+sd3<-sd(t1_hs_h$hungry)
+ttest2<-t.test(t0_hs$hungry, t1_hs_h$hungry, paired=TRUE)
+ttest2
+# Calculate Cohen's d for the paired t-test
+effect_size2 <- ttest2$statistic / sqrt(ttest2$parameter)
+
+```
+
+### 3 Mood 
+#### 3.1 Mood Plot
+Similar approach to mood
+```{r}
+# Create the plot with the modified timepoint labels
+ggplot(control2, aes(x = timepoint, y = PosAff, color = condition)) +
+  geom_boxplot(position = position_dodge(width = 0.75)) +
+  labs(title = "",
+       x = "Timepoints",
+       y = "Positive Affect") +
+  scale_color_manual(values = c("hungry" = "gold", "sated" = "cornflowerblue")) +
+  myTheme
+ggsave("posaff.png", plot = last_plot(), dpi = 300)
+```
+
+```{r}
+# Create the plot with the modified timepoint labels
+ggplot(control2, aes(x = timepoint, y = NegAff, color = condition)) +
+  geom_boxplot(position = position_dodge(width = 0.75)) +
+  labs(title = "",
+       x = "Timepoints",
+       y = "Negative Affect") +
+  scale_color_manual(values = c("hungry" = "gold", "sated" = "cornflowerblue")) +
+  myTheme
+ggsave("negaff.png", plot = last_plot(), dpi = 300)
+```
+
+#### 3.2 Relevant tests for mood
+```{r}
+mood_hungry_agg2 <- mood_hungry_pure %>%
+  group_by(subject, affect, Choice_var) %>%
+  summarise(mean_affect = mean(response_mood),std_error_affect = sd(response_mood)/sqrt(n()))
+mood_hungry_agg2$condition='hungry'
+
+
+mood_sated_agg2 <- mood_sated_pure %>%
+  group_by(subject, affect, Choice_var) %>%
+  summarise(mean_affect = mean(response_mood),std_error_affect = sd(response_mood)/sqrt(n()))
+mood_sated_agg2$condition='sated'
+
+# Remove rows with subjects not in data_hungry from data_sated and vice a versa
+mood_agg_h <- subset(mood_hungry_agg2, subject %in% mood_sated_agg2$subject)
+mood_agg_s <- subset(mood_sated_agg2, subject %in% mood_hungry_agg2$subject)
+
+mood_agg<-rbind(mood_agg_h, mood_agg_s)
+
+posaff<-subset(mood_agg, affect=="posaff")
+negaff<-subset(mood_agg, affect=="negaff")
+
+```
+
+#### 4.2 RM ANOVA Mood 
+```{r}
+#RM ANOVA (positive Affect)
+posaff$condition <- factor(posaff$condition)
+posaff$Choice_var <- factor(posaff$Choice_var)
+posaff$subject <- factor(posaff$subject)
+posaff$ID <- posaff$subject
+
+posaff2<-posaff[, c("mean_affect", "ID", "Choice_var", "condition")]
+
+rmanova_pos <- anova_test(
+  data = posaff2, dv = mean_affect, wid = ID,
+  within = c(Choice_var, condition)
+  )
+
+get_anova_table(rmanova_pos)
+```
+
+```{r}
+# PostHoc Tests (PA)
+# Post hoc t-tests for the time factor
+choice_var_levels <- unique(posaff2$Choice_var)
+
+for (level in choice_var_levels) {
+  subset_data <- subset(posaff2, Choice_var == level)
+  t_test_result <- t.test(subset_data$mean_affect ~ subset_data$condition)
+  
+  print(paste("T-test results for", level))
+  print(t_test_result)
+}
+
+# Post hoc t-tests for the 'condition' factor
+condition_levels <- unique(posaff2$condition)
+
+for (level in condition_levels) {
+  subset_data <- subset(posaff2, condition == level)
+  
+  t_test_result <- pairwise.t.test(subset_data$mean_affect, subset_data$Choice_var, p.adjust.method = "bonferroni")
+  
+  print(paste("Pairwise T-test results for", level))
+  print(t_test_result)
+}
+
+```
+
+```{r}
+# RM ANOVA (NA)
+negaff$condition <- factor(negaff$condition)
+negaff$Choice_var <- factor(negaff$Choice_var)
+negaff$subject <- factor(negaff$subject)
+negaff$ID <- negaff$subject
+
+negaff2<-negaff[, c("mean_affect", "ID", "Choice_var", "condition")]
+
+rmanova_neg <- anova_test(
+  data = negaff2, dv = mean_affect, wid = ID,
+  within = c(Choice_var, condition)
+  )
+
+get_anova_table(rmanova_neg)
+
+```
+
+```{r}
+#PostHoc (NA)
+# Effect of condition at each time point
+oneway_neg <- negaff2 %>%
+  group_by(Choice_var) %>%
+  anova_test(dv = mean_affect, wid = ID, within = condition) %>%
+  get_anova_table() %>%
+  adjust_pvalue(method = "bonferroni")
+oneway_neg
+
+# Pairwise comparisons between conditions 
+pwc_neg <- negaff2 %>%
+  group_by(Choice_var) %>%
+  pairwise_t_test(
+    mean_affect ~ condition, paired = TRUE,
+    p.adjust.method = "bonferroni"
+    )
+pwc_neg
+```
+
