@@ -1,6 +1,6 @@
 # Hungry Lens Analyses
 
-This is the repository where I am storing the data and code used to generate **1 behavioural** and **2 modeling** analyses for the preprint: https://osf.io/preprints/psyarxiv/wvfnb 
+This is the repository where I am storing the data and code used to generate **1 behavioural** and **2 modeling** analyses for the paper: Hunger shifts attention and attribute weighting in dietary choice https://elifesciences.org/articles/103736 
 
 ## 1 Behavioual Analyses
 
